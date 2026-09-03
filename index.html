@@ -4,6 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Team Attendance</title>
+<link rel="icon" href="./favicon.svg" type="image/svg+xml" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -31,7 +32,7 @@
   <header class="topbar">
     <div class="topbar-id">
       <span class="topbar-name" id="user-name"></span>
-      <span class="topbar-sub">Logging for yourself</span>
+      <span class="topbar-sub" id="user-role"></span>
     </div>
     <button id="signout-btn" class="btn-quiet">Sign out</button>
   </header>
@@ -50,7 +51,7 @@
         </div>
         <label class="km-field">
           <span>Distance</span>
-          <input id="run-km" type="number" min="0" step="0.1" inputmode="decimal" placeholder="0.0" />
+          <input id="run-km" type="number" min="0" max="200" step="0.1" inputmode="decimal" placeholder="0.0" />
           <span class="km-unit">km</span>
         </label>
         <p class="card-hint" id="run-hint"></p>
@@ -77,7 +78,7 @@
 
   <section class="roster">
     <div class="roster-head">
-      <h2>This week</h2>
+      <h2>The week</h2>
       <div class="week-nav">
         <button id="prev-week" class="btn-quiet" aria-label="Previous week">←</button>
         <span id="week-label"></span>
@@ -97,9 +98,42 @@
         <tbody></tbody>
       </table>
     </div>
+    <p id="roster-hint" class="status-text"></p>
     <p id="roster-status" class="status-text"></p>
   </section>
 </main>
+
+<!-- Edit sheet: opens when you tap an editable day in the roster -->
+<dialog id="editor" class="editor">
+  <form method="dialog" class="editor-form">
+    <div class="editor-head">
+      <h3 id="editor-who"></h3>
+      <p id="editor-when" class="editor-when"></p>
+    </div>
+
+    <label class="toggle-row">
+      <input type="checkbox" id="edit-run" />
+      <span>Ran</span>
+    </label>
+    <label class="km-field km-field-inset">
+      <span>Distance</span>
+      <input id="edit-km" type="number" min="0" max="200" step="0.1" inputmode="decimal" placeholder="0.0" />
+      <span class="km-unit">km</span>
+    </label>
+
+    <label class="toggle-row">
+      <input type="checkbox" id="edit-badminton" />
+      <span>Played badminton</span>
+    </label>
+
+    <p id="editor-error" class="error-text"></p>
+
+    <div class="editor-actions">
+      <button type="button" id="editor-cancel" class="btn-undo">Cancel</button>
+      <button type="button" id="editor-save" class="btn-log">Save</button>
+    </div>
+  </form>
+</dialog>
 
 <script type="module" src="./app.js"></script>
 </body>
