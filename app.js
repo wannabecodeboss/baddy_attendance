@@ -32,13 +32,15 @@ const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const ACTIVITIES = ["run", "badminton"];
 
 let currentUser = null;
+let isAdmin = false;
 let weekStart = null; // YYYY-MM-DD, always a Monday
-let myTodayLogs = {}; // { run: {...}, badminton: {...} }
+let myTodayLogs = {};
+let editing = null; // { member, date, logs }
 
-/* ---------- date helpers (all in the viewer's local timezone) ---------- */
+/* ---------- date helpers (viewer's local timezone) ---------- */
 
 function toDateStr(d) {
-  // Local calendar date, not UTC — someone logging at 11pm IST should get today.
+  // Local calendar date, not UTC — logging at 11pm IST should still say today.
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
@@ -64,11 +66,15 @@ function addDays(dateStr, n) {
 }
 
 const today = () => toDateStr(new Date());
+const firstWeek = () => mondayOf(RULES.seasonStart);
+const inSeason = (date) => date >= RULES.seasonStart && date <= today();
+
+const logId = (uid, date, activity) => `${uid}_${date}_${activity}`;
 
 /* ---------- auth ---------- */
 
-// Persist the session in localStorage so teammates stay signed in
-// across tabs, reloads, and app restarts until they explicitly sign out.
+// Persist the session in localStorage so teammates stay signed in across
+// reloads, tabs and restarts until they explicitly sign out.
 await setPersistence(auth, browserLocalPersistence);
 
 el("signin-btn").addEventListener("click", async () => {
@@ -90,6 +96,7 @@ onAuthStateChanged(auth, async (user) => {
   currentUser = user;
 
   if (!user) {
+    isAdmin = false;
     el("app-view").classList.add("hidden");
     el("signin-view").classList.remove("hidden");
     return;
@@ -99,7 +106,6 @@ onAuthStateChanged(auth, async (user) => {
   el("app-view").classList.remove("hidden");
   el("user-name").textContent = user.displayName || user.email;
 
-  // Register in the roster so teammates with zero logs still appear.
   await setDoc(
     doc(db, "members", user.uid),
     {
@@ -111,12 +117,23 @@ onAuthStateChanged(auth, async (user) => {
     { merge: true }
   );
 
+  // An admin can edit anyone's records; everyone else edits only their own.
+  try {
+    isAdmin = (await getDoc(doc(db, "admins", user.uid))).exists();
+  } catch {
+    isAdmin = false;
+  }
+  el("user-role").textContent = isAdmin ? "Admin — you can edit anyone" : "Logging for yourself";
+  el("roster-hint").textContent = isAdmin
+    ? "Tap any day to edit that person's record."
+    : "Tap any day in your own row to edit it.";
+
   renderTodayHeader();
   weekStart = mondayOf();
   await Promise.all([loadMyToday(), loadWeek()]);
 });
 
-/* ---------- today's check-in ---------- */
+/* ---------- today's quick check-in ---------- */
 
 function renderTodayHeader() {
   const d = new Date();
@@ -130,20 +147,19 @@ function renderTodayHeader() {
   el("run-hint").textContent = `Counts as attendance from ${RULES.minRunKm}km.`;
 }
 
-function logId(uid, date, activity) {
-  return `${uid}_${date}_${activity}`;
+async function fetchLogs(uid, date) {
+  const snaps = await Promise.all(
+    ACTIVITIES.map((a) => getDoc(doc(db, "logs", logId(uid, date, a))))
+  );
+  const out = {};
+  snaps.forEach((s) => {
+    if (s.exists()) out[s.data().activity] = s.data();
+  });
+  return out;
 }
 
 async function loadMyToday() {
-  myTodayLogs = {};
-  const date = today();
-  // Doc ids are deterministic, so read them directly instead of querying.
-  const snaps = await Promise.all(
-    ACTIVITIES.map((a) => getDoc(doc(db, "logs", logId(currentUser.uid, date, a))))
-  );
-  snaps.forEach((snap) => {
-    if (snap.exists()) myTodayLogs[snap.data().activity] = snap.data();
-  });
+  myTodayLogs = await fetchLogs(currentUser.uid, today());
   renderCards();
 }
 
@@ -151,41 +167,57 @@ function renderCards() {
   for (const activity of ACTIVITIES) {
     const card = el(`card-${activity}`);
     const entry = myTodayLogs[activity];
-    const logBtn = card.querySelector(".btn-log");
-    const undoBtn = card.querySelector(".btn-undo");
-
     card.classList.toggle("is-logged", Boolean(entry));
-    logBtn.classList.toggle("hidden", Boolean(entry));
-    undoBtn.classList.toggle("hidden", !entry);
+    card.querySelector(".btn-log").classList.toggle("hidden", Boolean(entry));
+    card.querySelector(".btn-undo").classList.toggle("hidden", !entry);
 
     const state = el(`${activity}-state`);
     if (!entry) {
       state.textContent = "Not logged";
     } else if (activity === "run") {
-      const counts = entry.distanceKm >= RULES.minRunKm;
-      state.textContent = counts
-        ? `Logged · ${entry.distanceKm}km`
-        : `Logged · ${entry.distanceKm}km (under ${RULES.minRunKm}km)`;
+      state.textContent =
+        entry.distanceKm >= RULES.minRunKm
+          ? `Logged · ${entry.distanceKm}km`
+          : `Logged · ${entry.distanceKm}km (under ${RULES.minRunKm}km)`;
     } else {
       state.textContent = "Logged";
     }
   }
-
-  const runEntry = myTodayLogs.run;
-  if (runEntry) el("run-km").value = runEntry.distanceKm;
+  if (myTodayLogs.run) el("run-km").value = myTodayLogs.run.distanceKm;
 }
 
+// Only the two "today" cards carry data-activity. The edit sheet's Save
+// button reuses .btn-log for styling but has its own handler.
 document.querySelectorAll(".btn-log").forEach((btn) => {
-  btn.addEventListener("click", () => saveLog(btn.dataset.activity, btn));
+  if (btn.dataset.activity) {
+    btn.addEventListener("click", () => quickLog(btn.dataset.activity, btn));
+  }
 });
-
 document.querySelectorAll(".btn-undo").forEach((btn) => {
-  btn.addEventListener("click", () => removeLog(btn.dataset.activity, btn));
+  if (btn.dataset.activity) {
+    btn.addEventListener("click", () => quickRemove(btn.dataset.activity, btn));
+  }
 });
 
-async function saveLog(activity, btn) {
-  el("log-error").textContent = "";
+async function writeLog(member, date, activity, distanceKm) {
+  await setDoc(doc(db, "logs", logId(member.uid, date, activity)), {
+    uid: member.uid,
+    name: member.name,
+    date,
+    activity,
+    distanceKm,
+    loggedAt: serverTimestamp(),
+    editedBy: currentUser.uid,
+  });
+}
 
+const me = () => ({
+  uid: currentUser.uid,
+  name: currentUser.displayName || currentUser.email,
+});
+
+async function quickLog(activity, btn) {
+  el("log-error").textContent = "";
   let distanceKm = 0;
   if (activity === "run") {
     distanceKm = parseFloat(el("run-km").value);
@@ -194,22 +226,10 @@ async function saveLog(activity, btn) {
       return;
     }
   }
-
-  const date = today();
   btn.disabled = true;
   try {
-    const entry = {
-      uid: currentUser.uid,
-      name: currentUser.displayName || currentUser.email,
-      date,
-      activity,
-      distanceKm,
-      loggedAt: serverTimestamp(),
-    };
-    await setDoc(doc(db, "logs", logId(currentUser.uid, date, activity)), entry);
-    myTodayLogs[activity] = { ...entry, loggedAt: new Date() };
-    renderCards();
-    await loadWeek();
+    await writeLog(me(), today(), activity, distanceKm);
+    await Promise.all([loadMyToday(), loadWeek()]);
   } catch (err) {
     el("log-error").textContent = `Couldn't save that: ${err.message}`;
   } finally {
@@ -217,15 +237,13 @@ async function saveLog(activity, btn) {
   }
 }
 
-async function removeLog(activity, btn) {
+async function quickRemove(activity, btn) {
   el("log-error").textContent = "";
   btn.disabled = true;
   try {
     await deleteDoc(doc(db, "logs", logId(currentUser.uid, today(), activity)));
-    delete myTodayLogs[activity];
     if (activity === "run") el("run-km").value = "";
-    renderCards();
-    await loadWeek();
+    await Promise.all([loadMyToday(), loadWeek()]);
   } catch (err) {
     el("log-error").textContent = `Couldn't remove that: ${err.message}`;
   } finally {
@@ -236,11 +254,13 @@ async function removeLog(activity, btn) {
 /* ---------- weekly roster ---------- */
 
 el("prev-week").addEventListener("click", () => {
+  if (weekStart <= firstWeek()) return;
   weekStart = addDays(weekStart, -7);
   loadWeek();
 });
 
 el("next-week").addEventListener("click", () => {
+  if (weekStart >= mondayOf()) return;
   weekStart = addDays(weekStart, 7);
   loadWeek();
 });
@@ -262,7 +282,6 @@ async function loadWeek() {
     ]);
 
     const members = memberSnap.docs.map((d) => d.data());
-    // byUid[uid][date] = { run: entry, badminton: entry }
     const byUid = {};
     logSnap.forEach((d) => {
       const log = d.data();
@@ -278,11 +297,16 @@ async function loadWeek() {
   }
 }
 
+const canEdit = (uid) => isAdmin || uid === currentUser.uid;
+
 function renderRoster(members, byUid, days) {
-  const start = parseDateStr(days[0]);
-  const end = parseDateStr(days[6]);
   const fmt = { day: "numeric", month: "short" };
-  el("week-label").textContent = `${start.toLocaleDateString(undefined, fmt)} – ${end.toLocaleDateString(undefined, fmt)}`;
+  el("week-label").textContent =
+    `${parseDateStr(days[0]).toLocaleDateString(undefined, fmt)} – ` +
+    `${parseDateStr(days[6]).toLocaleDateString(undefined, fmt)}`;
+
+  el("prev-week").disabled = weekStart <= firstWeek();
+  el("next-week").disabled = weekStart >= mondayOf();
 
   const thead = document.querySelector("#roster-table thead");
   const tbody = document.querySelector("#roster-table tbody");
@@ -316,7 +340,6 @@ function renderRoster(members, byUid, days) {
     return;
   }
 
-  // Your own row first, then everyone else alphabetically.
   members.sort((a, b) => {
     if (a.uid === currentUser.uid) return -1;
     if (b.uid === currentUser.uid) return 1;
@@ -333,32 +356,41 @@ function renderRoster(members, byUid, days) {
 
     days.forEach((date) => {
       const label = DAY_NAMES[parseDateStr(date).getDay()];
+      const entries = byUid[member.uid]?.[date] || {};
       const td = document.createElement("td");
       if (!RULES.activeDays.includes(label)) td.classList.add("rest-day");
 
-      const entries = byUid[member.uid]?.[date] || {};
-      const marks = document.createElement("span");
-      marks.className = "marks";
-
+      const content = document.createElement("span");
+      content.className = "marks";
       if (entries.run) {
-        const counts = entries.run.distanceKm >= RULES.minRunKm;
         const dot = document.createElement("i");
-        dot.className = `mark ${counts ? "mark-run" : "mark-short"}`;
+        dot.className = `mark ${entries.run.distanceKm >= RULES.minRunKm ? "mark-run" : "mark-short"}`;
         dot.title = `Run · ${entries.run.distanceKm}km`;
-        marks.appendChild(dot);
+        content.appendChild(dot);
       }
       if (entries.badminton) {
         const dot = document.createElement("i");
         dot.className = "mark mark-bad";
         dot.title = "Badminton";
-        marks.appendChild(dot);
+        content.appendChild(dot);
+      }
+      if (!content.childElementCount) {
+        content.classList.add("mark-none");
+        content.textContent = "·";
       }
 
-      if (!marks.childElementCount) {
-        td.className += " mark-none";
-        td.textContent = "·";
+      // Editable only if it's your row (or you're an admin) and the date is
+      // inside the season and not in the future.
+      if (canEdit(member.uid) && inSeason(date)) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "cell-edit";
+        btn.appendChild(content);
+        btn.title = `Edit ${member.name} · ${date}`;
+        btn.addEventListener("click", () => openEditor(member, date, entries));
+        td.appendChild(btn);
       } else {
-        td.appendChild(marks);
+        td.appendChild(content);
       }
       tr.appendChild(td);
     });
@@ -366,3 +398,67 @@ function renderRoster(members, byUid, days) {
     tbody.appendChild(tr);
   });
 }
+
+/* ---------- edit sheet ---------- */
+
+function openEditor(member, date, entries) {
+  editing = { member, date };
+  el("editor-error").textContent = "";
+  el("editor-who").textContent =
+    member.uid === currentUser.uid ? "Your record" : member.name || member.email;
+  el("editor-when").textContent = parseDateStr(date).toLocaleDateString(undefined, {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+
+  el("edit-run").checked = Boolean(entries.run);
+  el("edit-km").value = entries.run ? entries.run.distanceKm : "";
+  el("edit-badminton").checked = Boolean(entries.badminton);
+  syncKmField();
+  el("editor").showModal();
+}
+
+function syncKmField() {
+  el("edit-km").disabled = !el("edit-run").checked;
+}
+
+el("edit-run").addEventListener("change", syncKmField);
+el("editor-cancel").addEventListener("click", () => el("editor").close());
+
+el("editor-save").addEventListener("click", async () => {
+  if (!editing) return;
+  const { member, date } = editing;
+  const wantRun = el("edit-run").checked;
+  const wantBad = el("edit-badminton").checked;
+  const km = parseFloat(el("edit-km").value);
+
+  if (wantRun && (!Number.isFinite(km) || km <= 0)) {
+    el("editor-error").textContent = "Enter the distance for the run.";
+    return;
+  }
+
+  const saveBtn = el("editor-save");
+  saveBtn.disabled = true;
+  el("editor-error").textContent = "";
+  try {
+    const ops = [];
+    ops.push(
+      wantRun
+        ? writeLog(member, date, "run", km)
+        : deleteDoc(doc(db, "logs", logId(member.uid, date, "run"))).catch(() => {})
+    );
+    ops.push(
+      wantBad
+        ? writeLog(member, date, "badminton", 0)
+        : deleteDoc(doc(db, "logs", logId(member.uid, date, "badminton"))).catch(() => {})
+    );
+    await Promise.all(ops);
+    el("editor").close();
+    await Promise.all([loadMyToday(), loadWeek()]);
+  } catch (err) {
+    el("editor-error").textContent = `Couldn't save: ${err.message}`;
+  } finally {
+    saveBtn.disabled = false;
+  }
+});
