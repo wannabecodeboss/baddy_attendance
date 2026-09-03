@@ -1,0 +1,62 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // Formats a timestamp as "YYYY-MM-DD" so it can be compared to the
+    // date strings the app writes.
+    function dayString(ts) {
+      return string(ts.year()) + "-"
+           + (ts.month() < 10 ? "0" : "") + string(ts.month()) + "-"
+           + (ts.day() < 10 ? "0" : "") + string(ts.day());
+    }
+
+    // Allows yesterday/today/tomorrow against the server clock. The window is
+    // wide enough to cover any timezone, but stops anyone backfilling a month
+    // of attendance they didn't earn.
+    function isRecentDate(dateStr) {
+      return dateStr >= dayString(request.time - duration.value(36, 'h'))
+          && dateStr <= dayString(request.time + duration.value(36, 'h'));
+    }
+
+    // Everyone signed in can see the roster; you can only edit your own entry.
+    match /members/{uid} {
+      allow read: if signedIn();
+      allow write: if signedIn()
+                   && request.auth.uid == uid
+                   && request.resource.data.uid == uid;
+    }
+
+    // Attendance logs. Doc id is always "{uid}_{date}_{activity}", which makes
+    // double-logging the same activity on the same day impossible, and stops
+    // anyone writing a log under someone else's name.
+    match /logs/{logId} {
+      allow read: if signedIn();
+
+      allow create, update: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && logId == request.auth.uid + "_"
+                    + request.resource.data.date + "_"
+                    + request.resource.data.activity
+        && request.resource.data.activity in ["run", "badminton"]
+        && request.resource.data.name is string
+        && request.resource.data.distanceKm is number
+        && request.resource.data.distanceKm >= 0
+        && request.resource.data.distanceKm <= 200
+        && request.resource.data.date is string
+        && isRecentDate(request.resource.data.date);
+
+      allow delete: if signedIn()
+        && resource.data.uid == request.auth.uid;
+    }
+
+    // Nothing else is reachable from the browser.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
