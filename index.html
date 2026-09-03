@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Team Attendance</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+
+<!-- Shown while Firebase restores the saved session -->
+<div id="boot" class="boot">
+  <p>Checking your session…</p>
+</div>
+
+<!-- Signed out -->
+<main id="signin-view" class="signin hidden">
+  <div class="signin-inner">
+    <h1 class="wordmark">Evening<br />Session</h1>
+    <p class="signin-copy">Log your run and badminton. See who else showed up.</p>
+    <button id="signin-btn" class="btn-google">Sign in with Google</button>
+    <p id="signin-error" class="error-text"></p>
+  </div>
+</main>
+
+<!-- Signed in -->
+<main id="app-view" class="hidden">
+  <header class="topbar">
+    <div class="topbar-id">
+      <span class="topbar-name" id="user-name"></span>
+      <span class="topbar-sub">Logging for yourself</span>
+    </div>
+    <button id="signout-btn" class="btn-quiet">Sign out</button>
+  </header>
+
+  <section class="checkin">
+    <div class="checkin-head">
+      <h2 id="today-label"></h2>
+      <p id="today-note" class="checkin-note"></p>
+    </div>
+
+    <div class="cards">
+      <article class="card card-run" id="card-run">
+        <div class="card-top">
+          <h3>Run</h3>
+          <span class="card-state" id="run-state">Not logged</span>
+        </div>
+        <label class="km-field">
+          <span>Distance</span>
+          <input id="run-km" type="number" min="0" step="0.1" inputmode="decimal" placeholder="0.0" />
+          <span class="km-unit">km</span>
+        </label>
+        <p class="card-hint" id="run-hint"></p>
+        <div class="card-actions">
+          <button class="btn-log" data-activity="run">Log run</button>
+          <button class="btn-undo hidden" data-activity="run">Remove</button>
+        </div>
+      </article>
+
+      <article class="card card-bad" id="card-badminton">
+        <div class="card-top">
+          <h3>Badminton</h3>
+          <span class="card-state" id="badminton-state">Not logged</span>
+        </div>
+        <p class="card-hint">Played today? Mark yourself in.</p>
+        <div class="card-actions">
+          <button class="btn-log" data-activity="badminton">Log badminton</button>
+          <button class="btn-undo hidden" data-activity="badminton">Remove</button>
+        </div>
+      </article>
+    </div>
+    <p id="log-error" class="error-text"></p>
+  </section>
+
+  <section class="roster">
+    <div class="roster-head">
+      <h2>This week</h2>
+      <div class="week-nav">
+        <button id="prev-week" class="btn-quiet" aria-label="Previous week">←</button>
+        <span id="week-label"></span>
+        <button id="next-week" class="btn-quiet" aria-label="Next week">→</button>
+      </div>
+    </div>
+
+    <div class="legend">
+      <span><i class="dot dot-run"></i>Run</span>
+      <span><i class="dot dot-bad"></i>Badminton</span>
+      <span><i class="dot dot-short"></i>Run under <span id="legend-min"></span>km</span>
+    </div>
+
+    <div class="table-scroll">
+      <table id="roster-table">
+        <thead></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p id="roster-status" class="status-text"></p>
+  </section>
+</main>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>
