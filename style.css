@@ -390,3 +390,85 @@ tr.is-you td:first-child::after {
 @media (prefers-reduced-motion: no-preference) {
   .btn-log, .btn-google, .btn-quiet, .btn-undo { transition: background-color 120ms, color 120ms; }
 }
+
+/* ---------- editable roster cells ---------- */
+.cell-edit {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 5px 9px;
+  min-width: 34px;
+  color: inherit;
+  font: inherit;
+}
+
+.cell-edit:hover {
+  border-color: var(--line);
+  background: var(--ink-2);
+}
+
+button:disabled { opacity: 0.3; cursor: not-allowed; }
+
+/* ---------- edit sheet ---------- */
+.editor {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--ink-2);
+  color: var(--chalk);
+  padding: 0;
+  width: min(400px, calc(100vw - 32px));
+}
+
+.editor::backdrop { background: rgba(10, 13, 26, 0.7); }
+
+.editor-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 22px;
+}
+
+.editor-head h3 {
+  font-family: "Barlow Condensed", sans-serif;
+  font-weight: 600;
+  font-size: 26px;
+  margin: 0;
+}
+
+.editor-when {
+  margin: 2px 0 0;
+  color: var(--chalk-dim);
+  font-size: 14px;
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.toggle-row input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--bad);
+  cursor: pointer;
+}
+
+.km-field-inset {
+  margin: -6px 0 0 28px;
+}
+
+.km-field input:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.editor-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.editor-actions .btn-log { flex: 1; }
