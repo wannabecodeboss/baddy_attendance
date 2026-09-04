@@ -7,23 +7,50 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Formats a timestamp as "YYYY-MM-DD" so it can be compared to the
-    // date strings the app writes.
+    // Admins are granted by adding a document at /admins/{uid} from the
+    // Firebase console. Nobody can grant it to themselves from the app —
+    // writes to /admins are refused below.
+    function isAdmin() {
+      return signedIn()
+             && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    // Formats a timestamp as "YYYY-MM-DD" for comparison against the date
+    // strings the app writes.
     function dayString(ts) {
       return string(ts.year()) + "-"
            + (ts.month() < 10 ? "0" : "") + string(ts.month()) + "-"
            + (ts.day() < 10 ? "0" : "") + string(ts.day());
     }
 
-    // Allows yesterday/today/tomorrow against the server clock. The window is
-    // wide enough to cover any timezone, but stops anyone backfilling a month
-    // of attendance they didn't earn.
-    function isRecentDate(dateStr) {
-      return dateStr >= dayString(request.time - duration.value(36, 'h'))
+    // Any date from the season opener up to today. The 36-hour forward slack
+    // covers teammates in timezones ahead of UTC; it stops well short of
+    // letting anyone pre-log next week.
+    // Keep the season start in sync with RULES.seasonStart in firebase-config.js.
+    function inSeason(dateStr) {
+      return dateStr >= "2026-08-31"
           && dateStr <= dayString(request.time + duration.value(36, 'h'));
     }
 
-    // Everyone signed in can see the roster; you can only edit your own entry.
+    function validLog(data, logId) {
+      return logId == data.uid + "_" + data.date + "_" + data.activity
+             && data.activity in ["run", "badminton"]
+             && data.name is string
+             && data.uid is string
+             && data.date is string
+             && data.distanceKm is number
+             && data.distanceKm >= 0
+             && data.distanceKm <= 200
+             // Optional: a teammate on a cached older build sends no time.
+             // Validated when present so it can't be junk.
+             && (!("durationSec" in data)
+                 || (data.durationSec is number
+                     && data.durationSec >= 0
+                     && data.durationSec <= 86400))
+             && inSeason(data.date);
+    }
+
+    // The whole team can see the roster. You can only edit your own entry.
     match /members/{uid} {
       allow read: if signedIn();
       allow write: if signedIn()
@@ -31,27 +58,25 @@ service cloud.firestore {
                    && request.resource.data.uid == uid;
     }
 
-    // Attendance logs. Doc id is always "{uid}_{date}_{activity}", which makes
-    // double-logging the same activity on the same day impossible, and stops
-    // anyone writing a log under someone else's name.
+    // Readable by anyone signed in — the point of the app is that the whole
+    // team sees everyone's attendance.
+    match /admins/{uid} {
+      allow read: if signedIn();
+      allow write: if false; // grant admin in the Firebase console only
+    }
+
+    // Attendance logs. Doc id is always "{uid}_{date}_{activity}" and must
+    // match the data inside, so a log can never be filed under a name that
+    // doesn't own it.
     match /logs/{logId} {
       allow read: if signedIn();
 
       allow create, update: if signedIn()
-        && request.resource.data.uid == request.auth.uid
-        && logId == request.auth.uid + "_"
-                    + request.resource.data.date + "_"
-                    + request.resource.data.activity
-        && request.resource.data.activity in ["run", "badminton"]
-        && request.resource.data.name is string
-        && request.resource.data.distanceKm is number
-        && request.resource.data.distanceKm >= 0
-        && request.resource.data.distanceKm <= 200
-        && request.resource.data.date is string
-        && isRecentDate(request.resource.data.date);
+        && validLog(request.resource.data, logId)
+        && (request.resource.data.uid == request.auth.uid || isAdmin());
 
       allow delete: if signedIn()
-        && resource.data.uid == request.auth.uid;
+        && (resource.data.uid == request.auth.uid || isAdmin());
     }
 
     // Nothing else is reachable from the browser.

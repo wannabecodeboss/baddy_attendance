@@ -22,7 +22,7 @@ export const firebaseConfig = {
 // it here, change it there too and redeploy the rules, or the server will keep
 // rejecting logs the app thinks are valid.
 export const RULES = {
-  seasonStart: "2026-09-01",
+  seasonStart: "2026-08-31",
   minRunKm: 2,
   windowLabel: "6:30–7:30 PM",
   activeDays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],

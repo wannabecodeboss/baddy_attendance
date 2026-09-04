@@ -34,7 +34,11 @@
       <span class="topbar-name" id="user-name"></span>
       <span class="topbar-sub" id="user-role"></span>
     </div>
-    <button id="signout-btn" class="btn-quiet">Sign out</button>
+    <nav class="nav">
+      <a href="./leaderboard.html" class="nav-link">Leaderboard</a>
+      <a href="./totals.html" class="nav-link">Totals</a>
+      <button id="signout-btn" class="btn-quiet">Sign out</button>
+    </nav>
   </header>
 
   <section class="checkin">
@@ -54,6 +58,13 @@
           <input id="run-km" type="number" min="0" max="200" step="0.1" inputmode="decimal" placeholder="0.0" />
           <span class="km-unit">km</span>
         </label>
+        <div class="km-field">
+          <span>Time</span>
+          <input id="run-min" type="number" min="0" max="1440" inputmode="numeric" placeholder="0" aria-label="Minutes" />
+          <span class="km-unit">min</span>
+          <input id="run-sec" type="number" min="0" max="59" inputmode="numeric" placeholder="00" aria-label="Seconds" />
+          <span class="km-unit">sec</span>
+        </div>
         <p class="card-hint" id="run-hint"></p>
         <div class="card-actions">
           <button class="btn-log" data-activity="run">Log run</button>
@@ -120,6 +131,13 @@
       <input id="edit-km" type="number" min="0" max="200" step="0.1" inputmode="decimal" placeholder="0.0" />
       <span class="km-unit">km</span>
     </label>
+    <div class="km-field km-field-inset">
+      <span>Time</span>
+      <input id="edit-min" type="number" min="0" max="1440" inputmode="numeric" placeholder="0" aria-label="Minutes" />
+      <span class="km-unit">min</span>
+      <input id="edit-sec" type="number" min="0" max="59" inputmode="numeric" placeholder="00" aria-label="Seconds" />
+      <span class="km-unit">sec</span>
+    </div>
 
     <label class="toggle-row">
       <input type="checkbox" id="edit-badminton" />

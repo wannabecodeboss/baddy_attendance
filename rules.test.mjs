@@ -20,7 +20,7 @@ const BOB = "bob_uid";
 const ADMIN = "admin_uid";
 
 // Must match the season start in firestore.rules.
-const SEASON_START = "2026-09-01";
+const SEASON_START = "2026-08-31";
 
 function dayOffset(n = 0) {
   const d = new Date();
@@ -29,8 +29,8 @@ function dayOffset(n = 0) {
 }
 
 const logId = (uid, date, activity) => `${uid}_${date}_${activity}`;
-const entry = (uid, date, activity, distanceKm = 0, name = "Test") => ({
-  uid, name, date, activity, distanceKm,
+const entry = (uid, date, activity, distanceKm = 0, name = "Test", durationSec = 0) => ({
+  uid, name, date, activity, distanceKm, durationSec,
 });
 
 let passed = 0, failed = 0;
@@ -120,6 +120,15 @@ await check("cannot mismatch doc id and payload", () =>
 await check("cannot log before the season start", () =>
   assertFails(setDoc(doc(alice, "logs", logId(ALICE, "2026-08-25", "run")),
     entry(ALICE, "2026-08-25", "run", 5, "Alice"))));
+await check("can log a run with a duration", () =>
+  assertSucceeds(setDoc(doc(alice, "logs", logId(ALICE, dayOffset(-2), "run")),
+    entry(ALICE, dayOffset(-2), "run", 5, "Alice", 1710))));
+await check("legacy write without durationSec still accepted", () =>
+  assertSucceeds(setDoc(doc(alice, "logs", logId(ALICE, dayOffset(-3), "run")),
+    { uid: ALICE, name: "Alice", date: dayOffset(-3), activity: "run", distanceKm: 5 })));
+await check("cannot log an absurd duration", () =>
+  assertFails(setDoc(doc(alice, "logs", logId(ALICE, dayOffset(), "run")),
+    entry(ALICE, dayOffset(), "run", 5, "Alice", 999999))));
 await check("cannot pre-log a week into the future", () =>
   assertFails(setDoc(doc(alice, "logs", logId(ALICE, dayOffset(7), "run")),
     entry(ALICE, dayOffset(7), "run", 5, "Alice"))));

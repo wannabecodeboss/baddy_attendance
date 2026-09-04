@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Totals — Team Attendance</title>
+<link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+
+<div id="boot" class="boot">
+  <p>Checking your session…</p>
+</div>
+
+<main id="signin-view" class="signin hidden">
+  <div class="signin-inner">
+    <h1 class="wordmark">Evening<br />Session</h1>
+    <p class="signin-copy">Sign in to see everyone's totals.</p>
+    <button id="signin-btn" class="btn-google">Sign in with Google</button>
+    <p id="signin-error" class="error-text"></p>
+  </div>
+</main>
+
+<main id="app-view" class="hidden">
+  <header class="topbar">
+    <div class="topbar-id">
+      <span class="topbar-name" id="user-name"></span>
+      <span class="topbar-sub">Season totals</span>
+    </div>
+    <nav class="nav">
+      <a href="./index.html" class="nav-link">Log</a>
+      <a href="./leaderboard.html" class="nav-link">Leaderboard</a>
+      <button id="signout-btn" class="btn-quiet">Sign out</button>
+    </nav>
+  </header>
+
+  <section class="board-section">
+    <h2 class="board-title">Everyone's totals</h2>
+    <p class="board-sub" id="totals-sub"></p>
+
+    <div class="table-scroll">
+      <table id="totals-table"><thead></thead><tbody></tbody></table>
+    </div>
+
+    <h2 class="board-title">Team so far</h2>
+    <div class="summary-grid" id="team-summary"></div>
+
+    <p id="totals-status" class="status-text"></p>
+  </section>
+</main>
+
+<script type="module" src="./totals.js"></script>
+</body>
+</html>

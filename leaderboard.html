@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Leaderboard — Team Attendance</title>
+<link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+
+<div id="boot" class="boot">
+  <p>Checking your session…</p>
+</div>
+
+<main id="signin-view" class="signin hidden">
+  <div class="signin-inner">
+    <h1 class="wordmark">Evening<br />Session</h1>
+    <p class="signin-copy">Sign in to see the leaderboard.</p>
+    <button id="signin-btn" class="btn-google">Sign in with Google</button>
+    <p id="signin-error" class="error-text"></p>
+  </div>
+</main>
+
+<main id="app-view" class="hidden">
+  <header class="topbar">
+    <div class="topbar-id">
+      <span class="topbar-name" id="user-name"></span>
+      <span class="topbar-sub">Leaderboard</span>
+    </div>
+    <nav class="nav">
+      <a href="./index.html" class="nav-link">Log</a>
+      <a href="./totals.html" class="nav-link">Totals</a>
+      <button id="signout-btn" class="btn-quiet">Sign out</button>
+    </nav>
+  </header>
+
+  <section class="board-section">
+    <div class="range-row">
+      <button class="range-btn is-on" data-range="season">Season</button>
+      <button class="range-btn" data-range="month">This month</button>
+      <button class="range-btn" data-range="week">This week</button>
+    </div>
+    <p id="range-note" class="checkin-note"></p>
+
+    <h2 class="board-title">Attendance</h2>
+    <p class="board-sub" id="attendance-sub"></p>
+    <div class="table-scroll">
+      <table id="attendance-board"><thead></thead><tbody></tbody></table>
+    </div>
+
+    <h2 class="board-title">Running</h2>
+    <p class="board-sub">Ranked by total distance. Pace needs a time entered.</p>
+    <div class="table-scroll">
+      <table id="running-board"><thead></thead><tbody></tbody></table>
+    </div>
+
+    <p id="board-status" class="status-text"></p>
+  </section>
+</main>
+
+<script type="module" src="./leaderboard.js"></script>
+</body>
+</html>
