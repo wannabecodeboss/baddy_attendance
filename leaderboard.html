@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Leaderboard — Team Attendance</title>
+<title>Ladder — Team Attendance</title>
 <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -19,7 +19,7 @@
 <main id="signin-view" class="signin hidden">
   <div class="signin-inner">
     <h1 class="wordmark">Evening<br />Session</h1>
-    <p class="signin-copy">Sign in to see the leaderboard.</p>
+    <p class="signin-copy">Sign in to see the ladder.</p>
     <button id="signin-btn" class="btn-google">Sign in with Google</button>
     <p id="signin-error" class="error-text"></p>
   </div>
@@ -29,7 +29,7 @@
   <header class="topbar">
     <div class="topbar-id">
       <span class="topbar-name" id="user-name"></span>
-      <span class="topbar-sub">Leaderboard</span>
+      <span class="topbar-sub">Ladder</span>
     </div>
     <nav class="nav">
       <a href="./index.html" class="nav-link">Log</a>
@@ -39,28 +39,108 @@
   </header>
 
   <section class="board-section">
-    <div class="range-row">
-      <button class="range-btn is-on" data-range="season">Season</button>
-      <button class="range-btn" data-range="month">This month</button>
-      <button class="range-btn" data-range="week">This week</button>
-    </div>
-    <p id="range-note" class="checkin-note"></p>
+    <h2 class="board-title" style="border-top:none;padding-top:0;">Challenge ladder</h2>
+    <p class="board-sub" id="ladder-intro">
+      Beat someone ranked within two of you and you take the higher rank.
+    </p>
 
-    <h2 class="board-title">Attendance</h2>
-    <p class="board-sub" id="attendance-sub"></p>
-    <div class="table-scroll">
-      <table id="attendance-board"><thead></thead><tbody></tbody></table>
+    <div id="ladder-disabled" class="hidden">
+      <p class="status-text">The ladder isn’t open yet — an admin still needs to seed the ranks.</p>
     </div>
 
-    <h2 class="board-title">Running</h2>
-    <p class="board-sub">Ranked by total distance. Pace needs a time entered.</p>
-    <div class="table-scroll">
-      <table id="running-board"><thead></thead><tbody></tbody></table>
+    <div id="ladder-body" class="hidden">
+      <div id="ladders"></div>
+
+      <h3 class="board-title">Not on a ladder yet</h3>
+      <p class="board-sub">On the roster but unranked. An admin adds you at the bottom.</p>
+      <ul id="unranked-list" class="plain-list"></ul>
     </div>
 
-    <p id="board-status" class="status-text"></p>
+    <section id="admin-panel" class="admin-panel hidden">
+      <h3 class="board-title">Admin</h3>
+      <p class="board-sub">Seed brings unranked players onto the bottom of a ladder. Normalize closes any gaps so ranks read 1…N.</p>
+      <div id="admin-actions" class="admin-actions"></div>
+      <p id="admin-status" class="status-text"></p>
+    </section>
+
+    <p id="ladder-status" class="status-text"></p>
   </section>
 </main>
+
+<!-- One-time: which ladder are you on -->
+<dialog id="gender-dialog" class="editor">
+  <div class="editor-form">
+    <div class="editor-head">
+      <h3>Which ladder?</h3>
+      <p class="editor-when">Pick once. Ask an admin if you need it changed later.</p>
+    </div>
+    <div class="editor-actions">
+      <button type="button" class="btn-log" data-gender="M">Men</button>
+      <button type="button" class="btn-log" data-gender="F">Women</button>
+    </div>
+    <p id="gender-error" class="error-text"></p>
+  </div>
+</dialog>
+
+<!-- Record a match result -->
+<dialog id="record-dialog" class="editor">
+  <form method="dialog" class="editor-form">
+    <div class="editor-head">
+      <h3>Record a match</h3>
+      <p class="editor-when" id="record-vs"></p>
+    </div>
+
+    <div class="field-row">
+      <span>Winner</span>
+      <select id="record-winner"></select>
+    </div>
+
+    <label class="field-row">
+      <span>Played on</span>
+      <input id="record-date" type="date" />
+    </label>
+
+    <label class="field-row">
+      <span>Score</span>
+      <input id="record-score" type="text" inputmode="text" maxlength="40"
+             placeholder="21-15, 19-21, 21-18" />
+    </label>
+
+    <p id="record-note" class="board-sub"></p>
+    <p id="record-error" class="error-text"></p>
+
+    <div class="editor-actions">
+      <button type="button" id="record-cancel" class="btn-undo">Cancel</button>
+      <button type="button" id="record-save" class="btn-log">Save result</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Admin: edit one player's standing -->
+<dialog id="rank-dialog" class="editor">
+  <form method="dialog" class="editor-form">
+    <div class="editor-head">
+      <h3 id="rank-who"></h3>
+      <p class="editor-when" id="rank-ladder"></p>
+    </div>
+
+    <label class="field-row"><span>Rank</span>
+      <input id="rank-rank" type="number" min="1" step="1" inputmode="numeric" /></label>
+    <label class="field-row"><span>Played</span>
+      <input id="rank-played" type="number" min="0" step="1" inputmode="numeric" /></label>
+    <label class="field-row"><span>Wins</span>
+      <input id="rank-wins" type="number" min="0" step="1" inputmode="numeric" /></label>
+    <label class="field-row"><span>Losses</span>
+      <input id="rank-losses" type="number" min="0" step="1" inputmode="numeric" /></label>
+
+    <p id="rank-error" class="error-text"></p>
+
+    <div class="editor-actions">
+      <button type="button" id="rank-remove" class="btn-undo">Remove from ladder</button>
+      <button type="button" id="rank-save" class="btn-log">Save</button>
+    </div>
+  </form>
+</dialog>
 
 <script type="module" src="./leaderboard.js"></script>
 </body>

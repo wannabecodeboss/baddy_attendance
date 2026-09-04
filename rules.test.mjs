@@ -12,7 +12,9 @@ import {
   assertSucceeds,
   assertFails,
 } from "@firebase/rules-unit-testing";
-import { doc, setDoc, deleteDoc, getDocs, collection } from "firebase/firestore";
+import {
+  doc, setDoc, updateDoc, deleteDoc, getDocs, collection, writeBatch,
+} from "firebase/firestore";
 import fs from "fs";
 
 const ALICE = "alice_uid";
@@ -153,6 +155,161 @@ await check("signed-in user can read the admin list", () =>
 console.log("\nother collections");
 await check("arbitrary collections unreachable", () =>
   assertFails(setDoc(doc(alice, "secrets", "x"), { a: 1 })));
+
+/* ======================= challenge ladder ======================= */
+
+const CARY = "cary_uid";   // men's, rank 5 — out of range of Alice
+const DIANA = "diana_uid"; // women's, rank 1
+const EVE = "eve_uid";     // signed in, not a participant
+
+const cary = testEnv.authenticatedContext(CARY).firestore();
+const diana = testEnv.authenticatedContext(DIANA).firestore();
+const eve = testEnv.authenticatedContext(EVE).firestore();
+
+const rank = (uid, gender, r, extra = {}) => ({
+  uid, gender, name: uid, rank: r, played: 0, wins: 0, losses: 0, ...extra,
+});
+
+// Reset the four rank docs to a known, counter-zeroed state. Called before
+// each independent result-batch case so `before.played` is deterministic.
+async function freshLadder() {
+  await testEnv.withSecurityRulesDisabled(async (ctx) => {
+    const d = ctx.firestore();
+    await setDoc(doc(d, "ranks", ALICE), rank(ALICE, "M", 1));
+    await setDoc(doc(d, "ranks", BOB), rank(BOB, "M", 2));
+    await setDoc(doc(d, "ranks", CARY), rank(CARY, "M", 5));
+    await setDoc(doc(d, "ranks", DIANA), rank(DIANA, "F", 1));
+    await setDoc(doc(d, "members", ALICE), { uid: ALICE, name: "Alice", email: "a@x.com" });
+  });
+}
+await freshLadder();
+
+// A well-formed result batch: match doc + both rank docs, positional swap.
+function resultBatch(ctx, authUid, {
+  me, opp, meRank, oppRank, meGender = "M",
+  winner, matchId, score = "21-15", playedOn = dayOffset(),
+  mePlayed = 0, oppPlayed = 0, meDelta = 1,
+}) {
+  const swap = winner === (meRank > oppRank ? me : opp) && meRank !== oppRank;
+  const b = writeBatch(ctx);
+  b.set(doc(ctx, "matches", matchId), {
+    gender: meGender,
+    participants: [me, opp],
+    aUid: me, aName: me, bUid: opp, bName: opp,
+    winnerUid: winner, score, playedOn, rankSwapped: swap,
+    recordedBy: authUid,
+  });
+  b.update(doc(ctx, "ranks", me), {
+    rank: swap ? oppRank : meRank,
+    played: mePlayed + meDelta,
+    wins: winner === me ? 1 : 0, losses: winner === me ? 0 : 1,
+    lastMatchId: matchId, lastMatchWith: opp, updatedBy: authUid,
+  });
+  b.update(doc(ctx, "ranks", opp), {
+    rank: swap ? meRank : oppRank,
+    played: oppPlayed + 1,
+    wins: winner === opp ? 1 : 0, losses: winner === opp ? 0 : 1,
+    lastMatchId: matchId, lastMatchWith: me, updatedBy: authUid,
+  });
+  return b.commit();
+}
+
+const matchDoc = (over = {}) => ({
+  gender: "M", participants: [ALICE, BOB],
+  aUid: ALICE, aName: "a", bUid: BOB, bName: "b",
+  winnerUid: ALICE, score: "21-15", playedOn: dayOffset(),
+  rankSwapped: false, recordedBy: ALICE, ...over,
+});
+
+console.log("\nranks/ — seeding is admin-only");
+await check("admin can create a rank doc", () =>
+  assertSucceeds(setDoc(doc(admin, "ranks", "temp_uid"), rank("temp_uid", "M", 9))));
+await check("non-admin cannot create a rank doc", () =>
+  assertFails(setDoc(doc(alice, "ranks", ALICE), rank(ALICE, "M", 1))));
+await check("admin can free-edit any rank", () =>
+  assertSucceeds(updateDoc(doc(admin, "ranks", CARY),
+    { rank: 3, played: 4, wins: 2, losses: 2 })));
+await check("admin rank edit with impossible counters is rejected", () =>
+  assertFails(updateDoc(doc(admin, "ranks", CARY),
+    { rank: 3, played: 1, wins: 5, losses: 5 })));
+
+console.log("\nmatches/ — recording a result");
+await freshLadder();
+await check("participant records a legal result (higher seed wins, no swap)", () =>
+  assertSucceeds(resultBatch(alice, ALICE, {
+    me: ALICE, opp: BOB, meRank: 1, oppRank: 2, winner: ALICE, matchId: "m1",
+  })));
+await check("participant records a legal upset (lower seed wins, ranks swap)", () =>
+  assertSucceeds(resultBatch(bob, BOB, {
+    me: BOB, opp: ALICE, meRank: 2, oppRank: 1, winner: BOB, matchId: "m2",
+    mePlayed: 1, oppPlayed: 1,
+  })));
+// Bob is now rank 1, Alice rank 2, both carrying lastMatchId "m2".
+await check("replaying the same match id is rejected", () =>
+  assertFails(resultBatch(bob, BOB, {
+    me: BOB, opp: ALICE, meRank: 1, oppRank: 2, winner: BOB, matchId: "m2",
+    mePlayed: 2, oppPlayed: 2,
+  })));
+
+console.log("\nmatches/ — abuse + integrity");
+await freshLadder();
+await check("a non-participant cannot record the match", () =>
+  assertFails(resultBatch(eve, EVE, {
+    me: ALICE, opp: BOB, meRank: 1, oppRank: 2, winner: ALICE, matchId: "m3",
+  })));
+await freshLadder();
+await check("cannot challenge across ladders", () =>
+  assertFails(resultBatch(alice, ALICE, {
+    me: ALICE, opp: DIANA, meRank: 1, oppRank: 1, winner: ALICE, matchId: "m4",
+  })));
+await freshLadder();
+await check("cannot challenge someone more than two ranks away", () =>
+  assertFails(resultBatch(bob, BOB, {
+    me: BOB, opp: CARY, meRank: 2, oppRank: 5, winner: BOB, matchId: "m5",
+  })));
+await check("cannot record a self-match", () =>
+  assertFails(setDoc(doc(bob, "matches", "m6"),
+    matchDoc({ participants: [BOB, BOB], aUid: BOB, bUid: BOB, winnerUid: BOB, recordedBy: BOB }))));
+await freshLadder();
+await check("cannot inflate played by more than one", () =>
+  assertFails(resultBatch(bob, BOB, {
+    me: BOB, opp: ALICE, meRank: 2, oppRank: 1, winner: BOB, matchId: "m7", meDelta: 3,
+  })));
+await freshLadder();
+await check("cannot save an over-long score", () =>
+  assertFails(resultBatch(bob, BOB, {
+    me: BOB, opp: ALICE, meRank: 2, oppRank: 1, winner: BOB, matchId: "m8",
+    score: "x".repeat(41),
+  })));
+await freshLadder();
+await check("cannot record a match before the season", () =>
+  assertFails(resultBatch(bob, BOB, {
+    me: BOB, opp: ALICE, meRank: 2, oppRank: 1, winner: BOB, matchId: "m9",
+    playedOn: "2026-08-25",
+  })));
+
+console.log("\nmatches/ — admin");
+await testEnv.withSecurityRulesDisabled(async (ctx) => {
+  await setDoc(doc(ctx.firestore(), "matches", "seed_match"), matchDoc());
+});
+await check("non-admin cannot delete a match", () =>
+  assertFails(deleteDoc(doc(bob, "matches", "seed_match"))));
+await check("admin can delete a match", () =>
+  assertSucceeds(deleteDoc(doc(admin, "matches", "seed_match"))));
+
+console.log("\nmembers/ — gender is set once");
+await check("can set own gender the first time", () =>
+  assertSucceeds(setDoc(doc(alice, "members", ALICE),
+    { uid: ALICE, name: "Alice", email: "a@x.com", gender: "M" }, { merge: true })));
+await check("cannot flip own gender afterward", () =>
+  assertFails(setDoc(doc(alice, "members", ALICE),
+    { uid: ALICE, name: "Alice", email: "a@x.com", gender: "F" }, { merge: true })));
+await check("admin can correct someone's gender", () =>
+  assertSucceeds(setDoc(doc(admin, "members", ALICE),
+    { uid: ALICE, name: "Alice", email: "a@x.com", gender: "F" }, { merge: true })));
+await check("gender must be M or F", () =>
+  assertFails(setDoc(doc(diana, "members", DIANA),
+    { uid: DIANA, name: "Diana", email: "d@x.com", gender: "X" }, { merge: true })));
 
 await testEnv.cleanup();
 console.log(`\n${passed} passed, ${failed} failed\n`);

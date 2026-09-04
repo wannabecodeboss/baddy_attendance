@@ -90,9 +90,45 @@ Repeat for any co-admin. To revoke, delete the document.
 
 ## Pages
 - `index.html` — log today, and edit any past day back to 31 August.
-- `leaderboard.html` — ranked boards for attendance and running, filterable by
-  season / month / week.
+- `leaderboard.html` — the **challenge ladder** (see below).
 - `totals.html` — every person's season totals plus a team summary.
+
+## The challenge ladder
+
+Two ladders — Men's and Women's — picked once per player at first visit to
+`leaderboard.html`. You can't change your own ladder afterward; an admin can.
+
+- Beat someone ranked **within two places** of you and you take the higher
+  rank (a straight swap of the two rank numbers). Beat someone below you and
+  nothing moves. This holds whoever started the match.
+- Either player records the result — opponent, winner, date, and a free-text
+  score like `21-15, 19-21, 21-18`. There's no confirmation step: the result
+  and the rank swap are trusted and written together in one batch.
+- Every player's **played / won / lost** and full dated match history show
+  publicly in the dropdown under their name.
+
+Nothing is enforced about *who actually won* — same honour-system trade-off as
+attendance. The rules only keep the ladder well-formed: same ladder, ranks
+within two, a clean swap, no replays.
+
+### Turning it on
+1. Add `gender` onboarding happens automatically the first time each player
+   opens the ladder page.
+2. As an admin, open `leaderboard.html` → **Admin → Seed unranked** for each
+   ladder. This shuffles everyone who has picked a ladder but has no rank yet
+   and drops them on the bottom, in random order.
+3. Flip `ladderEnabled: true` in `firebase-config.js` and redeploy the site.
+   Until then the page shows a short "not open yet" note.
+4. New players who join later land in **Not on a ladder yet**; run **Seed
+   unranked** again to add them at the bottom.
+
+### Admin controls (on `leaderboard.html`)
+- **Seed unranked** / **Normalize** (close gaps to 1…N) / **Reshuffle all**
+  per ladder.
+- **Edit** on any row — set that player's rank and P/W/L, or remove them from
+  the ladder.
+- **Delete** on any history line. Note: deleting or editing a match does *not*
+  recalculate anyone's counters or ranks — fix those by hand with **Edit**.
 
 ## Using it
 - **Today** — the two cards at the top are the fast path: enter distance and
@@ -122,6 +158,17 @@ app.
 - Only `run` and `badminton`; distances 0–200km.
 - Dates only from 31 August up to ~today (36 hours of forward slack covers
   timezones without allowing pre-logging next week).
+- `gender` on a member doc must be `M` or `F`, and once set only an admin can
+  change it.
+- `/ranks` is created and freely edited **only by an admin**. The one other
+  write is a match result: it must be a batch by one of the two players that
+  moves both rank docs as a clean positional swap (or leaves them), bumps
+  `played` by exactly one, and carries a match id the doc hasn't seen before
+  (so the same result can't be applied twice).
+- A `/matches` row must be written by one of its two participants, name a
+  winner who is one of them, and pair two players on the same ladder whose
+  ranks are within two. Score is a non-empty string ≤ 40 chars. Only an admin
+  can edit or delete a match afterward.
 
 ## Testing the rules
 `rules.test.mjs` covers all of the above, including the abuse cases and the

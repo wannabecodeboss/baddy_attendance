@@ -148,6 +148,37 @@ export function activeDaysElapsed(from, to) {
   return dateRange(from, to).filter(isActiveDay).length;
 }
 
+/* ---------- challenge ladder ---------- */
+
+/**
+ * Everything the ladder page needs: the roster (for names + who's unranked),
+ * the rank docs, and the full match history. Three small collection reads —
+ * same "one team, one season" assumption as loadSeasonData.
+ */
+export async function loadLadders(db, firestore) {
+  const { collection, getDocs } = firestore;
+  const [memberSnap, rankSnap, matchSnap] = await Promise.all([
+    getDocs(collection(db, "members")),
+    getDocs(collection(db, "ranks")),
+    getDocs(collection(db, "matches")),
+  ]);
+  return {
+    members: memberSnap.docs.map((d) => d.data()),
+    ranks: rankSnap.docs.map((d) => d.data()),
+    matches: matchSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
+  };
+}
+
+/** Matches that involve `uid`, newest first. */
+export function matchesFor(uid, matches) {
+  return matches
+    .filter((m) => m.participants?.includes(uid))
+    .sort((a, b) =>
+      (b.playedOn || "").localeCompare(a.playedOn || "") ||
+      (b.createdAtMs || 0) - (a.createdAtMs || 0)
+    );
+}
+
 /**
  * Per-person totals. A run only counts toward attendance once it clears
  * RULES.minRunKm — but every run's distance and time still count toward the

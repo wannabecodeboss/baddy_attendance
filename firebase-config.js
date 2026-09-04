@@ -26,4 +26,22 @@ export const RULES = {
   minRunKm: 2,
   windowLabel: "6:30–7:30 PM",
   activeDays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+
+  // The challenge ladder. Flip this on only after an admin has seeded the
+  // ranks (see README). While it's false, leaderboard.html shows a short
+  // "not open yet" note instead of the ladder.
+  ladderEnabled: false,
+  // How far apart two players' ranks may be for a legal challenge.
+  // NOTE: this "2" is also hard-coded in firestore.rules (absDiff checks in
+  // validMatch / validParticipantRankUpdate). Change both together.
+  challengeGap: 2,
+  // Longest accepted score string, e.g. "21-15, 19-21, 21-18".
+  maxScoreLen: 40,
 };
+
+// The two ladders. Keys are what's stored on member/rank docs as `gender`;
+// labels are what the UI shows. Kept here so there's one place to relabel.
+export const LADDERS = [
+  { key: "M", label: "Men" },
+  { key: "F", label: "Women" },
+];

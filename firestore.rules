@@ -32,6 +32,85 @@ service cloud.firestore {
           && dateStr <= dayString(request.time + duration.value(36, 'h'));
     }
 
+    function absDiff(a, b) {
+      return a >= b ? a - b : b - a;
+    }
+
+    function validGender(data) {
+      return !("gender" in data) || data.gender in ["M", "F"];
+    }
+
+    // A rank doc as it must look coming out of the console seeder / admin
+    // editor. Counters are non-negative and consistent; rank is a positive
+    // integer.
+    function validRankShape(data) {
+      return data.uid is string
+             && data.gender in ["M", "F"]
+             && data.rank is int && data.rank >= 1
+             && data.played is int && data.played >= 0
+             && data.wins is int && data.wins >= 0
+             && data.losses is int && data.losses >= 0
+             && data.wins + data.losses <= data.played;
+    }
+
+    // A player recording a match writes BOTH rank docs in one batch. Each
+    // write carries the match id and the opponent's uid so this rule can
+    // re-derive what a legal outcome looks like without seeing the sibling
+    // match doc (it isn't committed yet mid-batch).
+    function validParticipantRankUpdate(uid) {
+      let before = resource.data;
+      let after = request.resource.data;
+      let otherUid = after.lastMatchWith;
+      let other = get(/databases/$(database)/documents/ranks/$(otherUid)).data;
+      return signedIn()
+        && (request.auth.uid == uid || request.auth.uid == otherUid)
+        && otherUid is string && otherUid != uid
+        // identity + ladder never change through this path
+        && after.uid == before.uid
+        && after.gender == before.gender
+        && after.gender == other.gender
+        // the two must have been within challenge range
+        && absDiff(before.rank, other.rank) <= 2
+        // rank either stays (higher seed won) or is exactly the swap
+        && (
+             after.rank == before.rank
+             || (after.rank == other.rank && after.rank != before.rank)
+           )
+        // exactly one match's worth of counter movement
+        && after.played == before.played + 1
+        && after.wins >= before.wins
+        && after.losses >= before.losses
+        && (after.wins - before.wins) + (after.losses - before.losses) == 1
+        && after.wins + after.losses <= after.played
+        // can't replay the same batch: the match id must be new to this doc
+        && after.lastMatchId is string
+        && (!("lastMatchId" in before) || before.lastMatchId != after.lastMatchId)
+        && after.updatedBy == request.auth.uid;
+    }
+
+    function validMatch(data) {
+      let ra = get(/databases/$(database)/documents/ranks/$(data.aUid)).data;
+      let rb = get(/databases/$(database)/documents/ranks/$(data.bUid)).data;
+      return data.recordedBy == request.auth.uid
+             && request.auth.uid in data.participants
+             && data.participants is list
+             && data.participants.size() == 2
+             && data.participants.hasOnly([data.aUid, data.bUid])
+             && data.participants.hasAll([data.aUid, data.bUid])
+             && data.aUid is string && data.bUid is string
+             && data.aUid != data.bUid
+             && (data.winnerUid == data.aUid || data.winnerUid == data.bUid)
+             && data.gender in ["M", "F"]
+             && ra.gender == data.gender && rb.gender == data.gender
+             && absDiff(ra.rank, rb.rank) <= 2
+             && data.score is string
+             && data.score.size() > 0
+             && data.score.size() <= 40
+             && data.playedOn is string
+             && inSeason(data.playedOn)
+             && data.rankSwapped is bool;
+    }
+
     function validLog(data, logId) {
       return logId == data.uid + "_" + data.date + "_" + data.activity
              && data.activity in ["run", "badminton"]
@@ -51,11 +130,28 @@ service cloud.firestore {
     }
 
     // The whole team can see the roster. You can only edit your own entry.
+    // `gender` picks your ladder — you set it once at onboarding and can't
+    // flip it afterward (that would drag a rank into the other ladder). An
+    // admin can correct it.
     match /members/{uid} {
       allow read: if signedIn();
-      allow write: if signedIn()
-                   && request.auth.uid == uid
-                   && request.resource.data.uid == uid;
+
+      allow create: if signedIn()
+                    && request.auth.uid == uid
+                    && request.resource.data.uid == uid
+                    && validGender(request.resource.data);
+
+      allow update: if request.resource.data.uid == uid
+                    && validGender(request.resource.data)
+                    && (
+                         (signedIn() && request.auth.uid == uid
+                          && (!("gender" in resource.data)
+                              || ("gender" in request.resource.data
+                                  && request.resource.data.gender == resource.data.gender)))
+                         || isAdmin()
+                       );
+
+      allow delete: if isAdmin();
     }
 
     // Readable by anyone signed in — the point of the app is that the whole
@@ -77,6 +173,31 @@ service cloud.firestore {
 
       allow delete: if signedIn()
         && (resource.data.uid == request.auth.uid || isAdmin());
+    }
+
+    // Challenge-ladder standings. One doc per ranked player, id == uid.
+    // Seeding and any free-hand rank edits are admin-only (rules can't
+    // check "is this rank number unused" — that needs a collection query).
+    // The one non-admin write is a match result: both players' docs move
+    // together in a single batch, constrained to a clean positional swap.
+    match /ranks/{uid} {
+      allow read: if signedIn();
+      allow create: if isAdmin() && validRankShape(request.resource.data)
+                    && request.resource.data.uid == uid;
+      allow update: if (isAdmin() && validRankShape(request.resource.data)
+                        && request.resource.data.uid == uid)
+                    || validParticipantRankUpdate(uid);
+      allow delete: if isAdmin();
+    }
+
+    // Match history. Anyone signed in reads it (the ladder shows each
+    // player's record publicly). A result is written by one of the two
+    // players; the winner is taken on trust, but the pairing still has to
+    // be a legal challenge (same ladder, ranks within two).
+    match /matches/{matchId} {
+      allow read: if signedIn();
+      allow create: if signedIn() && validMatch(request.resource.data);
+      allow update, delete: if isAdmin();
     }
 
     // Nothing else is reachable from the browser.
